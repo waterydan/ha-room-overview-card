@@ -1,0 +1,11 @@
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+const root = new URL("../", import.meta.url);
+const { version } = JSON.parse(await readFile(new URL("package.json", root), "utf8"));
+const files = ["model", "lights", "registry", "media", "styles", "card", "editor"];
+const modules = await Promise.all(files.map(name => readFile(new URL(`src/${name}.js`, root), "utf8")));
+const body = modules.map(source => source.replace(/^import .*;\n/gm, "").replace(/^export (?=(const|function|class|async function))/gm, "")).join("\n");
+await mkdir(new URL("dist/", root), { recursive: true });
+const output = `/* Room Scene Card v${version} | MIT | Built from src/; run npm run build. */\n(() => {\n"use strict";\n${body}\n})();\n`;
+await writeFile(new URL("dist/room-scene-card.js", root), output);
+console.log(`Built ${fileURLToPath(new URL("dist/room-scene-card.js", root))} (${Buffer.byteLength(output)} bytes)`);

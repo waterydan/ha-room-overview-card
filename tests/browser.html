@@ -1,0 +1,64 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Room Scene Card test fixture</title>
+<style>body{font-family:system-ui;max-width:1050px;margin:24px auto;padding:16px;--primary-text-color:#222;--secondary-text-color:#666;--card-background-color:white;--primary-color:#0288d1;--divider-color:#ddd}main{display:grid;grid-template-columns:400px 1fr;gap:32px}pre{white-space:pre-wrap;font-size:12px}ha-icon{display:inline-block;width:24px;height:24px} @media(max-width:800px){main{grid-template-columns:1fr}}</style>
+<h1>Room Scene Card test fixture</h1><p>Simulated devices; service calls update this page only.</p>
+<main><section><room-scene-card></room-scene-card><button id="readings">Simulate low readings</button><button id="unavailable">Simulate unavailable sensor</button><button id="motion">Toggle motion detection</button><button id="contact">Toggle contact open / closed</button><button id="move">Move fan to another room</button><button id="fail">Fail next service call</button><button id="size">Toggle 320 px card width</button><pre id="services"></pre><pre id="moreinfo"></pre></section><section><room-scene-card-editor></room-scene-card-editor><pre id="config"></pre></section></main>
+<script>
+// The local fixture supplies stand-ins for HA's native selectors. In Home
+// Assistant, ha-selector loads the full icon catalog and real Media browser.
+customElements.define('ha-selector', class extends HTMLElement {
+  connectedCallback() {
+    if (this.firstChild) return;
+    const label=document.createElement('label');label.textContent=this.label;
+    const select=document.createElement('select');select.setAttribute('aria-label',this.label);
+    select.style.cssText='display:block;width:100%;min-height:44px;margin-top:6px;font:inherit';
+    const isIcon=!!this.selector.icon;
+    const choices=isIcon?['mdi:sofa','mdi:bed','mdi:home-outline']:['media-source://media_source/local/sample-image.png','media-source://media_source/local/second-sample.png','media-source://media_source/local/missing.jpg'];
+    const current=isIcon?this.value:this.value?.media_content_id;
+    for(const value of ['',...new Set([...choices,...(current?[current]:[])])]){
+      const option=document.createElement('option');option.value=value;option.textContent=value||'Use room default';select.append(option);
+    }
+    select.value=current||'';
+    select.addEventListener('change',()=>this.dispatchEvent(new CustomEvent('value-changed',{detail:{value:isIcon?select.value:select.value?{media_content_id:select.value,media_content_type:'image/png'}:undefined},bubbles:true,composed:true})));
+    label.append(select);this.append(label);
+  }
+});
+</script>
+<script type="module">
+import '../dist/room-scene-card.js';
+const card=document.querySelector('room-scene-card'),editor=document.querySelector('room-scene-card-editor');
+const areas=[{area_id:'sample',name:'Sample Room',icon:'mdi:sofa'},{area_id:'empty',name:'Empty Room',icon:'mdi:bed'}];
+const entities=['light.a','light.b','light.color','light.white','light.wall','switch.wall','binary_sensor.door','binary_sensor.motion','fan.a','cover.a','switch.a','climate.a','media_player.a','lock.a','sensor.temperature','sensor.humidity'].map(entity_id=>({entity_id,area_id:'sample'}));
+const devices=[{id:'ceiling',area_id:'sample',name:'Ceiling lights'},{id:'presence',area_id:'sample',name:'Presence sensor'},{id:'lamp',area_id:'sample',name:'White lamp'},{id:'fan',area_id:'sample',name:'Ventilation fan'}];
+for(const entity of entities){entity.device_id=['light.a','light.b'].includes(entity.entity_id)?'ceiling':['binary_sensor.motion','sensor.temperature','sensor.humidity'].includes(entity.entity_id)?'presence':entity.entity_id==='light.white'?'lamp':entity.entity_id==='fan.a'?'fan':null}
+const state=(value,attributes={})=>({state:String(value),attributes});
+const states={'light.a':state('off',{friendly_name:'Ceiling light',supported_features:1,brightness:128}),'light.b':state('unavailable',{friendly_name:'Unavailable lamp'}),'binary_sensor.door':state('on',{device_class:'door',friendly_name:'Front door'}),'binary_sensor.motion':state('off',{device_class:'motion',friendly_name:'Motion detector'}),'fan.a':state('off',{friendly_name:'Ventilation fan'}),'cover.a':state('closed',{friendly_name:'Blind'}),'switch.a':state('off',{friendly_name:'Socket'}),'climate.a':state('off'),'media_player.a':state('off'),'lock.a':state('locked'),'sensor.temperature':state(31,{device_class:'temperature',unit_of_measurement:'°C',friendly_name:'Room temperature'}),'sensor.humidity':state(80,{device_class:'humidity',unit_of_measurement:'%',friendly_name:'Room humidity'})};
+states['light.color']=state('off',{friendly_name:'Color strip',supported_color_modes:['hs','color_temp'],supported_features:36,brightness:null,hs_color:null,color_temp_kelvin:null,min_color_temp_kelvin:1500,max_color_temp_kelvin:9000});
+states['light.white']=state('on',{friendly_name:'White lamp',supported_color_modes:['color_temp'],brightness:204,color_mode:'color_temp',color_temp_kelvin:3000,min_color_temp_kelvin:2200,max_color_temp_kelvin:6500});
+states['light.wall']=state('off',{friendly_name:'Wall light',supported_color_modes:['onoff']});
+states['switch.wall']=state('off',{friendly_name:'Lighting switch'});
+const events=new Map();let fail=false;
+// Generate a solid-color sample image in memory; no files or room artwork.
+const sampleCanvas=document.createElement('canvas');sampleCanvas.width=8;sampleCanvas.height=8;
+const sampleContext=sampleCanvas.getContext('2d');sampleContext.fillStyle='#334155';sampleContext.fillRect(0,0,8,8);
+const sampleImage=sampleCanvas.toDataURL('image/png');
+const connection={subscribeEvents:async(fn,type)=>{events.set(type,fn);return()=>events.delete(type)},addEventListener(){},removeEventListener(){}};
+const hass={states,connection,areas:Object.fromEntries(areas.map(a=>[a.area_id,a])),locale:{language:'en'},config:{unit_system:{temperature:'°C'}},callWS:async m=>{
+  if(m.type==='media_source/resolve_media'){
+    if(m.media_content_id.endsWith('missing.jpg'))throw new Error('Image missing');
+    return{url:sampleImage,mime_type:'image/png'};
+  }
+  return m.type.includes('area_registry')?areas:m.type.includes('device_registry')?devices:entities;
+},hassUrl:path=>new URL(path,location.href).href,callService:async(domain,service,data,target)=>{document.querySelector('#services').textContent=JSON.stringify({domain,service,data,target});await new Promise(resolve=>setTimeout(resolve,150));if(fail){fail=false;throw new Error('Simulated service failure')}states[target.entity_id]={...states[target.entity_id],state:service==='turn_off'?'off':'on',attributes:{...states[target.entity_id].attributes,...(data.brightness_pct?{brightness:Math.round(data.brightness_pct*2.55)}:{}),...(data.hs_color?{hs_color:data.hs_color,color_mode:'hs'}:{}),...(data.color_temp_kelvin?{color_temp_kelvin:data.color_temp_kelvin,color_mode:'color_temp'}:{})}};render()}};
+let config={type:'custom:room-scene-card',area:'sample',light_switches:['switch.wall']};
+function render(){card.hass={...hass};editor.hass={...hass}}
+function setConfig(){card.setConfig(config);editor.setConfig(config);document.querySelector('#config').textContent=JSON.stringify(config,null,2);render()}
+editor.addEventListener('config-changed',e=>{config=e.detail.config;setConfig()});
+card.addEventListener('hass-more-info',e=>document.querySelector('#moreinfo').textContent=e.detail.entityId);
+document.querySelector('#readings').onclick=()=>{states['sensor.temperature'].state='10';states['sensor.humidity'].state='20';render()};
+document.querySelector('#unavailable').onclick=()=>{states['sensor.temperature'].state='unavailable';render()};
+document.querySelector('#motion').onclick=()=>{states['binary_sensor.motion'].state=states['binary_sensor.motion'].state==='on'?'off':'on';render()};
+document.querySelector('#contact').onclick=()=>{states['binary_sensor.door'].state=states['binary_sensor.door'].state==='on'?'off':'on';render()};
+document.querySelector('#move').onclick=()=>{entities.find(e=>e.entity_id==='fan.a').area_id='empty';events.get('entity_registry_updated')?.({})};
+document.querySelector('#fail').onclick=()=>{fail=true};setConfig();
+document.querySelector('#size').onclick=()=>{card.style.width=card.style.width?'':'320px'};
+</script></html>

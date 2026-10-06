@@ -1,0 +1,17 @@
+{
+  "name": "room-scene-card",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A Home Assistant room card with area discovery and four grouped control slots",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.js",
+    "check": "npm test && npm run build && node --check dist/room-scene-card.js",
+    "package": "node scripts/package.mjs"
+  }
+}

@@ -1,0 +1,29 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test and build
+        run: npm run check
+      - name: Verify the committed bundle is current
+        run: git diff --exit-code -- dist/room-scene-card.js
+      - name: HACS validation
+        uses: hacs/action@main
+        with:
+          category: plugin
+          comment: 'false'
+          # Catalogue screenshots are not needed for a custom repository.
+          ignore: images
