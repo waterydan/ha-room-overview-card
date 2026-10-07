@@ -19,7 +19,7 @@ jobs:
       - name: Test and build
         run: npm run check
       - name: Verify the committed bundle is current
-        run: git diff --exit-code -- dist/room-scene-card.js
+        run: git diff --exit-code -- dist/room-overview-card.js
       - name: HACS validation
         uses: hacs/action@main
         with:

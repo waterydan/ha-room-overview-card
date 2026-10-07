@@ -3,7 +3,7 @@ import { element, button } from "./card.js";
 import { watchRegistries } from "./registry.js";
 import { EDITOR_STYLE } from "./styles.js";
 
-class RoomSceneCardEditor extends HTMLElement {
+class RoomOverviewCardEditor extends HTMLElement {
   constructor() { super(); this.attachShadow({ mode: "open" }); this._config = {}; this._search = {}; }
   setConfig(config) { this._config = { ...config }; this._render(); }
   set hass(hass) {
@@ -247,4 +247,4 @@ class RoomSceneCardEditor extends HTMLElement {
     }
   }
 }
-if (!customElements.get("room-scene-card-editor")) customElements.define("room-scene-card-editor", RoomSceneCardEditor);
+if (!customElements.get("room-overview-card-editor")) customElements.define("room-overview-card-editor", RoomOverviewCardEditor);

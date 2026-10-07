@@ -1,5 +1,5 @@
 {
-  "name": "Room Scene Card",
-  "filename": "room-scene-card.js",
+  "name": "Room Overview Card",
+  "filename": "room-overview-card.js",
   "render_readme": true
 }

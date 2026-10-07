@@ -17,10 +17,10 @@ export function button(className, label, onClick) {
   node.addEventListener("click", onClick); return node;
 }
 
-class RoomSceneCard extends HTMLElement {
+class RoomOverviewCard extends HTMLElement {
   constructor() {
     super(); this.attachShadow({ mode: "open" }); this._pending = new Set(); this._rows = new Map(); this._lightValues = new Map();
-    this.shadowRoot.innerHTML = `<style>${CARD_STYLE}</style><ha-card><img class="background" alt=""><div class="shade"></div><div class="heading"><div class="room-summary"><button type="button" class="room-button"><ha-icon></ha-icon><span class="name"></span></button><div class="readings"></div></div><div class="status-row"><div class="sensor-status"></div><div class="warnings"></div></div></div><div class="tiles"></div><div class="message" role="status" hidden></div></ha-card><dialog aria-labelledby="room-scene-dialog-title"><div class="dialog-header"><h2 id="room-scene-dialog-title" class="dialog-heading"></h2><button type="button" class="close" aria-label="Close room details"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="dialog-body"><div class="dialog-error" role="alert"></div><div class="dialog-list"></div></div></dialog>`;
+    this.shadowRoot.innerHTML = `<style>${CARD_STYLE}</style><ha-card><img class="background" alt=""><div class="shade"></div><div class="heading"><div class="room-summary"><button type="button" class="room-button"><ha-icon></ha-icon><span class="name"></span></button><div class="readings"></div></div><div class="status-row"><div class="sensor-status"></div><div class="warnings"></div></div></div><div class="tiles"></div><div class="message" role="status" hidden></div></ha-card><dialog aria-labelledby="room-overview-dialog-title"><div class="dialog-header"><h2 id="room-overview-dialog-title" class="dialog-heading"></h2><button type="button" class="close" aria-label="Close room details"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="dialog-body"><div class="dialog-error" role="alert"></div><div class="dialog-list"></div></div></dialog>`;
     this._dialog = this.shadowRoot.querySelector("dialog");
     this.shadowRoot.querySelector(".room-button").addEventListener("click", () => this._openDetails());
     this.shadowRoot.querySelector(".close").addEventListener("click", () => this._closeDialog());
@@ -36,7 +36,7 @@ class RoomSceneCard extends HTMLElement {
       this.shadowRoot.querySelector("ha-card").dataset.hasImage = "true";
     });
   }
-  static async getConfigElement() { await loadEditorSelectors(); return document.createElement("room-scene-card-editor"); }
+  static async getConfigElement() { await loadEditorSelectors(); return document.createElement("room-overview-card-editor"); }
   static getStubConfig(hass) {
     const areas = Object.values(hass?.areas ?? {});
     return { area: areas.find(a => a.icon)?.area_id ?? areas[0]?.area_id ?? "" };
@@ -293,6 +293,6 @@ class RoomSceneCard extends HTMLElement {
   _moreInfo(entityId) { this._closeDialog(); this.dispatchEvent(new CustomEvent("hass-more-info", { bubbles: true, composed: true, detail: { entityId } })); }
 }
 
-if (!customElements.get("room-scene-card")) customElements.define("room-scene-card", RoomSceneCard);
+if (!customElements.get("room-overview-card")) customElements.define("room-overview-card", RoomOverviewCard);
 window.customCards = window.customCards || [];
-if (!window.customCards.some(card => card.type === "room-scene-card")) window.customCards.push({ type: "room-scene-card", name: "Room Scene Card", description: "Choose a room and up to four groups of devices.", preview: true });
+if (!window.customCards.some(card => card.type === "room-overview-card")) window.customCards.push({ type: "room-overview-card", name: "Room Overview Card", description: "Choose a room and up to four groups of devices.", preview: true });

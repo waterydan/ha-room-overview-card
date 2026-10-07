@@ -1,7 +1,7 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Room Scene Card test fixture</title>
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Room Overview Card test fixture</title>
 <style>body{font-family:system-ui;max-width:1050px;margin:24px auto;padding:16px;--primary-text-color:#222;--secondary-text-color:#666;--card-background-color:white;--primary-color:#0288d1;--divider-color:#ddd}main{display:grid;grid-template-columns:400px 1fr;gap:32px}pre{white-space:pre-wrap;font-size:12px}ha-icon{display:inline-block;width:24px;height:24px} @media(max-width:800px){main{grid-template-columns:1fr}}</style>
-<h1>Room Scene Card test fixture</h1><p>Simulated devices; service calls update this page only.</p>
-<main><section><room-scene-card></room-scene-card><button id="readings">Simulate low readings</button><button id="unavailable">Simulate unavailable sensor</button><button id="motion">Toggle motion detection</button><button id="contact">Toggle contact open / closed</button><button id="move">Move fan to another room</button><button id="fail">Fail next service call</button><button id="size">Toggle 320 px card width</button><pre id="services"></pre><pre id="moreinfo"></pre></section><section><room-scene-card-editor></room-scene-card-editor><pre id="config"></pre></section></main>
+<h1>Room Overview Card test fixture</h1><p>Simulated devices; service calls update this page only.</p>
+<main><section><room-overview-card></room-overview-card><button id="readings">Simulate low readings</button><button id="unavailable">Simulate unavailable sensor</button><button id="motion">Toggle motion detection</button><button id="contact">Toggle contact open / closed</button><button id="move">Move fan to another room</button><button id="fail">Fail next service call</button><button id="size">Toggle 320 px card width</button><pre id="services"></pre><pre id="moreinfo"></pre></section><section><room-overview-card-editor></room-overview-card-editor><pre id="config"></pre></section></main>
 <script>
 // The local fixture supplies stand-ins for HA's native selectors. In Home
 // Assistant, ha-selector loads the full icon catalog and real Media browser.
@@ -24,8 +24,8 @@ customElements.define('ha-selector', class extends HTMLElement {
 });
 </script>
 <script type="module">
-import '../dist/room-scene-card.js';
-const card=document.querySelector('room-scene-card'),editor=document.querySelector('room-scene-card-editor');
+import '../dist/room-overview-card.js';
+const card=document.querySelector('room-overview-card'),editor=document.querySelector('room-overview-card-editor');
 const areas=[{area_id:'sample',name:'Sample Room',icon:'mdi:sofa'},{area_id:'empty',name:'Empty Room',icon:'mdi:bed'}];
 const entities=['light.a','light.b','light.color','light.white','light.wall','switch.wall','binary_sensor.door','binary_sensor.motion','fan.a','cover.a','switch.a','climate.a','media_player.a','lock.a','sensor.temperature','sensor.humidity'].map(entity_id=>({entity_id,area_id:'sample'}));
 const devices=[{id:'ceiling',area_id:'sample',name:'Ceiling lights'},{id:'presence',area_id:'sample',name:'Presence sensor'},{id:'lamp',area_id:'sample',name:'White lamp'},{id:'fan',area_id:'sample',name:'Ventilation fan'}];
@@ -49,7 +49,7 @@ const hass={states,connection,areas:Object.fromEntries(areas.map(a=>[a.area_id,a
   }
   return m.type.includes('area_registry')?areas:m.type.includes('device_registry')?devices:entities;
 },hassUrl:path=>new URL(path,location.href).href,callService:async(domain,service,data,target)=>{document.querySelector('#services').textContent=JSON.stringify({domain,service,data,target});await new Promise(resolve=>setTimeout(resolve,150));if(fail){fail=false;throw new Error('Simulated service failure')}states[target.entity_id]={...states[target.entity_id],state:service==='turn_off'?'off':'on',attributes:{...states[target.entity_id].attributes,...(data.brightness_pct?{brightness:Math.round(data.brightness_pct*2.55)}:{}),...(data.hs_color?{hs_color:data.hs_color,color_mode:'hs'}:{}),...(data.color_temp_kelvin?{color_temp_kelvin:data.color_temp_kelvin,color_mode:'color_temp'}:{})}};render()}};
-let config={type:'custom:room-scene-card',area:'sample',light_switches:['switch.wall']};
+let config={type:'custom:room-overview-card',area:'sample',light_switches:['switch.wall']};
 function render(){card.hass={...hass};editor.hass={...hass}}
 function setConfig(){card.setConfig(config);editor.setConfig(config);document.querySelector('#config').textContent=JSON.stringify(config,null,2);render()}
 editor.addEventListener('config-changed',e=>{config=e.detail.config;setConfig()});

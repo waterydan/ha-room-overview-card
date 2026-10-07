@@ -1,4 +1,4 @@
 # Replace your_area_id with an Area ID from your Home Assistant instance,
 # or select the room using the card's visual editor.
-type: custom:room-scene-card
+type: custom:room-overview-card
 area: your_area_id

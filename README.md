@@ -1,4 +1,4 @@
-# Room Scene Card
+# Room Overview Card
 
 A reusable Home Assistant dashboard card with a room background, room icon, temperature and humidity, compact sensor indicators, and up to four control tiles in a single bottom row. Select a room in the visual editor; the card discovers its devices automatically. Each of the four tile dropdowns selects one group of controls, or None.
 
@@ -7,22 +7,22 @@ No other custom card is required. Rooms and devices come from the user's Home As
 ## Install through HACS
 
 1. Open HACS, select the three-dot menu, then **Custom repositories**.
-2. Enter the URL of the public `room-scene-card` GitHub repository and select **Dashboard**.
-3. Add the repository, find **Room Scene Card**, and download it.
-4. Reload the browser. Add **Room Scene Card** to a dashboard and select a room in its visual editor.
+2. Enter the URL of the public `room-overview-card` GitHub repository and select **Dashboard**.
+3. Add the repository, find **Room Overview Card**, and download it.
+4. Reload the browser. Add **Room Overview Card** to a dashboard and select a room in its visual editor.
 
-HACS normally registers the JavaScript module for storage-mode dashboards. If resources are managed in YAML, add `/hacsfiles/room-scene-card/room-scene-card.js` with `type: module` to your dashboard resources. Installation through a published HACS repository has not yet been verified.
+HACS normally registers the JavaScript module for storage-mode dashboards. If resources are managed in YAML, add `/hacsfiles/room-overview-card/room-overview-card.js` with `type: module` to your dashboard resources. Installation through a published HACS repository has not yet been verified.
 
 ## Install manually
 
-1. Download the repository's source ZIP, or extract a locally generated manual-install ZIP. Copy `dist/room-scene-card.js` into `/config/www/room-scene-card/`.
-2. In dashboard Resources, add `/local/room-scene-card/room-scene-card.js?v=1.0.0` as a JavaScript module.
-3. Reload the browser. Add **Room Scene Card**, then select a room.
+1. Download the repository's source ZIP, or extract a locally generated manual-install ZIP. Copy `dist/room-overview-card.js` into `/config/www/room-overview-card/`.
+2. In dashboard Resources, add `/local/room-overview-card/room-overview-card.js?v=1.0.0` as a JavaScript module.
+3. Reload the browser. Add **Room Overview Card**, then select a room.
 
 For YAML dashboards, register the same URL under `lovelace.resources` with `type: module`.
 
 ```yaml
-type: custom:room-scene-card
+type: custom:room-overview-card
 area: your_area_id
 ```
 
@@ -51,7 +51,7 @@ Tapping a tile opens all members of that group. Lights use sliding on/off toggle
 Active control groups highlight yellow; active sensor groups use subdued pink. Any unavailable member adds an exclamation marker, so a partly unavailable group is not shown as fully off. Native HA groups are omitted when their individual members are already present. Switch-as-light source switches are omitted when the converted entity is in the room. Ordinary switches remain in Switches; use Advanced to explicitly include lighting switches in Lights.
 
 ```yaml
-type: custom:room-scene-card
+type: custom:room-overview-card
 area: your_area_id
 tiles: [lights, fans, covers, none]
 tile_alignment: right
@@ -68,7 +68,7 @@ Exclusions are saved per card. Other cards and automations are unaffected. Exclu
 YAML accepts `exclude_devices` (device registry ID list) and `exclude_entities` (entity ID list). Existing `exclude_entities` settings continue to work. The visual editor fills device IDs for you; device names are not IDs.
 
 ```yaml
-type: custom:room-scene-card
+type: custom:room-overview-card
 area: your_area_id
 exclude_entities:
   - switch.example_helper
@@ -90,7 +90,7 @@ The four warning icons appear above/below these defaults:
 Change each threshold in Advanced, or leave it blank to disable that warning. Temperature uses the Home Assistant unit system unless overridden, with Celsius/Fahrenheit sensor conversion. Explicit temperature thresholds use the displayed unit; switching units in the editor converts them. Thresholds are comfort indicators and can be tailored to each room.
 
 ```yaml
-type: custom:room-scene-card
+type: custom:room-overview-card
 area: your_area_id
 tiles: [lights, fans, switches, none]
 temperature_sensor: sensor.example_temperature
@@ -106,7 +106,7 @@ Optional YAML settings: `name`, `icon`, `image`, `image_position` (CSS object-po
 
 ## Share through HACS
 
-Publish this repository as a public GitHub repository named `room-scene-card`, with a description, issues enabled, and topics such as `home-assistant`, `lovelace`, `custom-card` and `hacs`. Commit `dist/room-scene-card.js` alongside the root `README.md`, `LICENSE` and `hacs.json`. This layout follows the [HACS dashboard repository requirements](https://www.hacs.dev/docs/publish/plugin/).
+Publish this repository as a public GitHub repository named `room-overview-card`, with a description, issues enabled, and topics such as `home-assistant`, `lovelace`, `custom-card` and `hacs`. Commit `dist/room-overview-card.js` alongside the root `README.md`, `LICENSE` and `hacs.json`. This layout follows the [HACS dashboard repository requirements](https://www.hacs.dev/docs/publish/plugin/).
 
 The default branch is sufficient for a HACS custom repository; GitHub releases are optional. Initially, use the committed `dist/` module without publishing release assets. If adding versioned releases later, create a GitHub release from a commit containing the built module and verify HACS installs that version. The ZIP produced by `npm run package` is for manual installation; do not upload it as a HACS release asset.
 
