@@ -100,6 +100,7 @@ async function main() {
     assert.deepEqual(await control.locator('[data-native-key="rows:Lights"]').evaluate(node=>node._config.entities.map(entity=>entity.name)),['Bench','Cabinet']);
     assert.equal(await control.locator('hui-tile-card').count(),4);
     assert.equal(await control.locator('hui-picture-entity-card').count(),1);
+    assert.equal(await control.locator('hui-picture-entity-card').evaluate(node=>node._config.camera_view),'live');
     assert.equal(await page.evaluate(()=>nativeFixture.services.length),0);
     pass('native rows, feature tiles, picture cards and real HA badges render without service calls');
     const switchRow=control.locator('[data-native-key="rows:Lights"] hui-toggle-entity-row').first();
@@ -122,6 +123,7 @@ async function main() {
     assert.equal(await control.locator('.badges').textContent().then(text=>text.includes('2026-')),false);
     pass('secondary settings, healthy batteries and history use native expandable details');
     const previousCamera=await control.locator('hui-picture-entity-card').evaluate(node=>node._config.entity);await control.locator('.next').click();assert.notEqual(await control.locator('hui-picture-entity-card').evaluate(node=>node._config.entity),previousCamera);
+    assert.equal(await control.locator('hui-picture-entity-card').evaluate(node=>node._config.camera_view),'live');
     await page.evaluate(()=>{nativeFixture.card._dialog.bodyContainer.scrollTop=100;window.keptScroll=nativeFixture.card._dialog.bodyContainer.scrollTop;nativeFixture.states['sensor.temperature'].state='24';nativeFixture.render()});
     assert.equal(await page.evaluate(()=>nativeFixture.card._dialog.bodyContainer.scrollTop),await page.evaluate(()=>keptScroll));
     pass('native camera navigation and room scrolling survive state updates');

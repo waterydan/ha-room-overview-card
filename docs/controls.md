@@ -38,7 +38,7 @@ control_options:
 
 ## Cameras
 
-`camera_layout: carousel` mounts one native picture-entity card at a time, with native previous/next buttons. `camera_layout: tiles` displays the room’s cameras together. The preview uses a 16:9 aspect ratio and has a compact caption. Home Assistant owns image loading and the native camera viewer; the package does not store access tokens or sign camera URLs.
+`camera_layout: carousel` mounts one native picture-entity card at a time, with native previous/next buttons. `camera_layout: tiles` displays the room’s cameras together. Camera cards request `camera_view: live`, so supported live streams start automatically when the room opens or the selected camera changes. Playback uses a 16:9 aspect ratio and a compact caption. Tapping opens native More info, and closing the room releases its camera components. Home Assistant owns streaming and the native camera viewer; the package does not store access tokens or sign camera URLs. Cameras without streaming support retain Home Assistant’s image fallback.
 
 ## Standalone card
 

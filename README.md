@@ -209,7 +209,7 @@ npm run test:browser
 npm run package
 ```
 
-`npm run build:inline` produces compact primary and isolated demo modules for Home Assistant inline resources, using the pinned Terser development dependency. `npm run build` generates the one installable `dist/room-overview-card.js`. `npm run build:demo` also generates an isolated preview with separate overview and control element names, so installed cards cannot override its classes. `npm run package` creates `releases/room-overview-card-1.3.1.zip`, containing the combined bundle, documentation, license and HACS metadata. Commit the built bundle with the source.
+`npm run build:inline` produces compact primary and isolated demo modules for Home Assistant inline resources, using the pinned Terser development dependency. `npm run build` generates the one installable `dist/room-overview-card.js`. `npm run build:demo` also generates an isolated preview with separate overview and control element names, so installed cards cannot override its classes. `npm run package` creates `releases/room-overview-card-1.3.2.zip`, containing the combined bundle, documentation, license and HACS metadata. Commit the built bundle with the source.
 
 `npm run test:browser` loads real native components from Home Assistant’s public demo, then supplies simulated states and API contexts. It checks native entity actions, badges, exclusions, editor selectors, keyboard/hold activation, dialog lifecycle, camera navigation and phone/tablet/desktop layouts in light and dark themes. Device actions stay within the test fixture. Static frontend assets require network access. Set `BROWSER_CHANNEL=chrome` for installed Chrome and `PLAYWRIGHT_MODULE` for a bundled Playwright path.
 

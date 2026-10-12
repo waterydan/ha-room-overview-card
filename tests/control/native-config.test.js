@@ -27,5 +27,6 @@ test("dimming and playback are offered only when supported; native more-info rem
 test("cameras use native picture-entity configuration and never carry stored access tokens", () => {
   const config = pictureCardConfig(entity("camera", { entity_picture: "/api/camera_proxy/camera.example?token=private" }));
   assert.equal(config.type, "picture-entity"); assert.equal(config.entity, "camera.example");
+  assert.equal(config.camera_view, "live");
   assert.equal(config.aspect_ratio, "16:9"); assert.equal(JSON.stringify(config).includes("private"), false);
 });

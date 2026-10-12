@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.2 — 2026-10-12
+
+- Start native live camera playback automatically when room controls open, including carousel navigation and camera tiles.
+- Preserve native More info viewing and release camera components when the room closes.
+
 ## 1.3.1 — 2026-10-12
 
 - Restore left-aligned room names and readings after the native button migration.

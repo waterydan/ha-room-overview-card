@@ -1,4 +1,4 @@
-/* Room Overview + Control Card v1.3.1
+/* Room Overview + Control Card v1.3.2
 MIT License
 
 Copyright (c) 2026 Room Control Card contributors
@@ -352,7 +352,7 @@ function tileCardConfig(entity) {
   if (["select", "input_select"].includes(domain)) add("select-options", { style: "dropdown" });
   return { type: "tile", ...row(entity), vertical: false, tap_action: { action: "more-info" }, features_position: features.length === 1 ? "inline" : "bottom", ...(features.length ? { features } : {}) };
 }
-function pictureCardConfig(entity) { return { type: "picture-entity", ...row(entity), camera_view: "auto", show_name: true, show_state: false, aspect_ratio: "16:9", tap_action: { action: "more-info" }, hold_action: { action: "more-info" } }; }
+function pictureCardConfig(entity) { return { type: "picture-entity", ...row(entity), camera_view: "live", show_name: true, show_state: false, aspect_ratio: "16:9", tap_action: { action: "more-info" }, hold_action: { action: "more-info" } }; }
 function headingCardConfig(heading) { return { type: "heading", heading, heading_style: "subtitle" }; }
 
 const CARD_STYLES = `
