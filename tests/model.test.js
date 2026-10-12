@@ -7,6 +7,26 @@ const state = (value, attrs = {}) => ({ state: String(value), attributes: attrs 
 const registry = (entities, fields = {}) => ({ areas: [{ area_id: "one", name: "Test room" }], devices: [], entities, ...fields });
 const config = { area: "one" };
 
+test("existing configurations default to full mode and simple mode selects one supported group", () => {
+  assert.equal(normalizeConfig(config).mode, "full");
+  assert.equal(normalizeConfig({ ...config, mode: "full" }).mode, "full");
+  assert.equal(normalizeConfig({ ...config, mode: "simple" }).group, "lights");
+  for (const group of ["lights", "fans", "covers", "switches", "climate", "media", "locks", "contacts", "occupancy"]) {
+    assert.equal(normalizeConfig({ ...config, mode: "simple", group }).group, group);
+  }
+  for (const mode of ["compact", "", false, 0]) assert.throws(() => normalizeConfig({ ...config, mode }), /card mode/);
+  for (const group of ["none", "constructor", "", false, []]) assert.throws(() => normalizeConfig({ ...config, mode: "simple", group }), /device group/);
+});
+
+test("simple group membership follows room discovery, lighting switches and exclusions", () => {
+  const r = registry([entry("switch.lamp", { device_id: "a" }), entry("light.allowed"), entry("light.outside", { area_id: "two" }), entry("fan.a")]);
+  const cfg = normalizeConfig({ ...config, mode: "simple", group: "lights", light_switches: ["switch.lamp"], tiles: ["fans"] });
+  assert.deepEqual(discoverRoom(cfg, r).groups[cfg.group], ["light.allowed", "switch.lamp"]);
+  assert.deepEqual(discoverRoom({ ...cfg, exclude_devices: ["a"] }, r).groups[cfg.group], ["light.allowed"]);
+  assert.deepEqual(discoverRoom({ ...cfg, area: "two" }, r).groups[cfg.group], ["light.outside"]);
+  assert.deepEqual(discoverRoom({ ...cfg, group: "covers" }, r).groups.covers, []);
+});
+
 test("entity area overrides the device area, including an explicitly unassigned entity", () => {
   const entities = [entry("light.inherited", { area_id: null, device_id: "a" }), entry("light.override", { area_id: "two", device_id: "a" }), entry("light.unassigned", { area_id: "", device_id: "a" })];
   const model = discoverRoom(config, registry(entities, { devices: [{ id: "a", area_id: "one" }] }));

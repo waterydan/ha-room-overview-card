@@ -1,3 +1,4 @@
+import { exclusionList, normalizeExclusions, expandExclusions } from "./exclusions.js";
 export const GROUPS = {
   lights: { name: "Lights", icon: "mdi:lightbulb-group" },
   contacts: { name: "Contacts", icon: "mdi:door-open" },
@@ -43,35 +44,23 @@ export function entityKind(entity, state) {
   return DOMAINS[domain];
 }
 export function excludedEntityIds(config, registries, states = {}) {
-  const excluded = new Set(config.exclude_entities ?? []), devices = new Set(config.exclude_devices ?? []);
-  if (!excluded.size && !devices.size) return excluded;
-  // Include every sibling, even when its own area differs from the device's.
-  for (const entity of registries.entities) if (devices.has(entity.device_id)) excluded.add(entity.entity_id);
-  if (!excluded.size) return excluded;
-  const dependents = new Map();
-  const link = (source, dependent) => {
-    if (typeof source !== "string" || !source || typeof dependent !== "string" || !dependent) return;
-    if (!dependents.has(source)) dependents.set(source, new Set());
-    dependents.get(source).add(dependent);
-  };
-  for (const entity of registries.entities) {
-    const source = entity.options?.switch_as_x?.entity_id;
-    if (source) { link(source, entity.entity_id); link(entity.entity_id, source); }
-  }
-  // A group must never reintroduce an excluded member, including through a nested group.
-  for (const [id, state] of Object.entries(states)) {
-    const members = state?.attributes?.group_entities ?? state?.attributes?.entity_id;
-    if (Array.isArray(members)) for (const member of members) link(member, id);
-  }
-  const pending = [...excluded];
-  for (let i = 0; i < pending.length; i++) for (const id of dependents.get(pending[i]) ?? []) {
-    if (!excluded.has(id)) { excluded.add(id); pending.push(id); }
-  }
-  return excluded;
+  return expandExclusions(exclusionList(config), registries, states);
 }
 export function normalizeConfig(config) {
   if (!config || typeof config.area !== "string" || !config.area.trim()) throw new Error("Please select a room.");
-  const result = { ...config, area: config.area.trim() };
+  const mode = config.mode ?? "full";
+  if (!["full", "simple"].includes(mode)) throw new Error("Choose Full or Simple for the card mode.");
+  if (config.group !== undefined && !GROUP_ORDER.includes(config.group)) throw new Error("Choose a supported device group for the simple card.");
+  const result = { ...config, area: config.area.trim(), mode };
+  for (const key of ["overview_exclusions", "control_exclusions"]) {
+    if (config[key] !== undefined) result[key] = normalizeExclusions(config[key], key);
+  }
+  if (mode === "simple") result.group = config.group ?? "lights";
+  for (const key of ["show_room_title", "show_state"]) {
+    if (config[key] !== undefined && typeof config[key] !== "boolean") throw new Error(`${key} must be true or false.`);
+  }
+  // The dashboard Layout settings own sizing, including older pixel-sized configs.
+  delete result.simple_size; delete result.full_height;
   if (config.tiles !== undefined) {
     if (!Array.isArray(config.tiles) || config.tiles.length > 4 || config.tiles.some(k => k !== "none" && !GROUP_ORDER.includes(k))) {
       throw new Error("Select up to four device groups for the mini tiles.");
@@ -80,12 +69,13 @@ export function normalizeConfig(config) {
     if (new Set(selected).size !== selected.length) throw new Error("Each mini tile must select a different device group.");
     result.tiles = [...config.tiles];
   }
-  for (const key of ["exclude_devices", "exclude_entities", "light_switches"]) {
+  for (const key of ["exclude_devices", "exclude_entities", "light_switches", "power_sensors"]) {
     if (config[key] !== undefined) {
       if (!Array.isArray(config[key]) || config[key].some(id => typeof id !== "string" || !id.trim())) {
         throw new Error(`${key} must be a list of ${key === "exclude_devices" ? "device" : "entity"} IDs.`);
       }
       result[key] = [...new Set(config[key].map(id => id.trim()))];
+      if (key === "power_sensors" && result[key].some(id => domainOf(id) !== "sensor")) throw new Error("Power sensors must be sensor entity IDs.");
     }
   }
   for (const key of ["temperature_sensor", "humidity_sensor", "image", "icon", "name"]) {
@@ -160,6 +150,56 @@ export function groupStatus(kind, ids, states) {
   const noun = kind === "contacts" || kind === "covers" ? "open" : kind === "occupancy" ? "detecting activity" : kind === "locks" ? "unlocked" : "active";
   const status = !ids.length ? "No devices" : unavailable === ids.length ? "Unavailable" : `${active} of ${ids.length} ${noun}${unavailable ? `; ${unavailable} unavailable` : ""}`;
   return { active: active > 0, count: active, unavailable, status };
+}
+export function isPowerSensor(entity, states) {
+  return domainOf(entity.entity_id) === "sensor" && deviceClass(entity, states[entity.entity_id]) === "power";
+}
+export function groupPowerSensors(config, model, registries, states) {
+  if (config.power_sensors !== undefined) return { entities: config.power_sensors.filter(id => !model.excluded.has(id)), complete: true };
+  const registry = new Map(registries.entities.map(entity => [entity.entity_id, entity]));
+  const members = model.groups.switches;
+  const devices = new Set(members.map(id => registry.get(id)?.device_id).filter(Boolean));
+  const entities = [];
+  let complete = members.length > 0 && members.every(id => registry.get(id)?.device_id);
+  for (const device of devices) {
+    const choices = registries.entities.filter(entity => entity.device_id === device && eligible(entity) && !model.excluded.has(entity.entity_id) && isPowerSensor(entity, states));
+    // Multiple channels or overlapping meters need an explicit choice to avoid double-counting.
+    const otherSwitches = registries.entities.some(entity => entity.device_id === device && eligible(entity) && domainOf(entity.entity_id) === "switch" && !members.includes(entity.entity_id));
+    if (choices.length === 1 && !otherSwitches) entities.push(choices[0].entity_id);
+    else complete = false;
+  }
+  return { entities, complete };
+}
+export function simpleGroupSummary(config, model, registries, states, language) {
+  const kind = config.group, ids = model.groups[kind], status = groupStatus(kind, ids, states);
+  if (!ids.length || status.unavailable === ids.length) return status.status;
+  if (kind === "media") {
+    const priority = ["playing", "buffering", "paused", "on"];
+    const active = ids.map(id => states[id]).filter(state => usable(state) && priority.includes(state.state)).sort((a, b) => priority.indexOf(a.state) - priority.indexOf(b.state));
+    const primary = active[0];
+    if (!primary) return ids.some(id => usable(states[id]) && states[id].state === "idle") ? "Idle" : "Off";
+    if (primary.state === "on") return `${active.length} active`;
+    const title = typeof primary.attributes?.media_title === "string" ? primary.attributes.media_title.trim() : "";
+    const artist = typeof primary.attributes?.media_artist === "string" ? primary.attributes.media_artist.trim() : "";
+    const playback = primary.state === "paused" ? "Paused" : primary.state === "buffering" ? "Buffering" : "Playing";
+    if (!title) return `${active.length} ${playback.toLowerCase()}`;
+    return `${primary.state === "playing" ? "" : `${playback} · `}${title}${artist ? ` · ${artist}` : ""}${active.length > 1 ? ` · +${active.length - 1} more` : ""}`;
+  }
+  const noun = ["lights", "fans", "switches"].includes(kind) ? "on" : ["contacts", "covers"].includes(kind) ? "open" : kind === "locks" ? "unlocked" : "active";
+  let summary = `${status.count} ${noun}`;
+  if (kind === "switches") {
+    const power = groupPowerSensors(config, model, registries, states);
+    const units = { W: 1, kW: 1000, MW: 1000000, mW: .001 };
+    const values = power.entities.map(id => {
+      const value = numeric(states[id]), unit = states[id]?.attributes?.unit_of_measurement;
+      return value !== null && Object.hasOwn(units, unit) ? value * units[unit] : null;
+    }).filter(value => value !== null);
+    if (values.length) {
+      const watts = new Intl.NumberFormat(language, { maximumFractionDigits: 1 }).format(values.reduce((total, value) => total + value, 0));
+      summary += ` (${watts} W${power.complete && values.length === power.entities.length ? "" : " measured"})`;
+    }
+  }
+  return summary;
 }
 export function temperatureUnit(config, hass) { return config.temperature_unit && config.temperature_unit !== "auto" ? config.temperature_unit : hass.config?.unit_system?.temperature ?? "°C"; }
 export function convertTemperature(value, from, to) {

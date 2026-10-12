@@ -2,6 +2,7 @@
 /releases/
 /coverage/
 /dist/rooms/
+/dist/room-overview-card-demo.js
 /private/
 /.storage/
 /backups/
@@ -10,3 +11,6 @@
 .env.*
 *.log
 *.zip
+
+/dist/room-overview-card-inline.js
+/dist/room-overview-card-demo-inline.js

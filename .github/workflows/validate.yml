@@ -16,8 +16,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: npm
+      - name: Install tooling
+        run: npm ci
       - name: Test and build
         run: npm run check
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
+      - name: Verify both cards in the combined bundle
+        run: npm run test:browser
       - name: Verify the committed bundle is current
         run: git diff --exit-code -- dist/room-overview-card.js
       - name: HACS validation

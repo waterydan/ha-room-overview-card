@@ -1,0 +1,17 @@
+type: custom:room-overview-card
+area: your_area_id
+overview_exclusions:
+  devices: []
+  entities:
+    - sensor.hide_from_overview
+control_exclusions:
+  devices: []
+  entities:
+    - switch.hide_from_controls
+control_options:
+  everyday_controls: true
+  always_show: []
+  layout: compact
+  camera_layout: carousel
+  include_hidden: false
+  include_diagnostics: false

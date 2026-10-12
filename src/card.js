@@ -1,6 +1,7 @@
-import { GROUPS, GROUP_ORDER, normalizeConfig, discoverRoom, groupStatus, temperatureUnit, roomReading, thresholdsFor, warningsFor, safeImageUrl, domainOf, usable } from "./model.js";
+import { GROUPS, normalizeConfig, discoverRoom, groupStatus, simpleGroupSummary, temperatureUnit, roomReading, thresholdsFor, warningsFor, safeImageUrl } from "./model.js";
 import { watchRegistries } from "./registry.js";
-import { lightCapabilities, lightColor, lightTemperatureBounds } from "./lights.js";
+import { controlCardConfig } from "./control-config.js";
+import { loadNativeComponents } from "./native.js";
 import { CARD_STYLE } from "./styles.js";
 import { isMediaImage, resolveMediaImage, loadEditorSelectors } from "./media.js";
 
@@ -12,20 +13,33 @@ export function element(tag, className, text) {
 }
 function iconNode(icon) { const node = element("ha-icon"); node.setAttribute("icon", icon); return node; }
 export function button(className, label, onClick) {
-  const node = element("button", className); node.type = "button";
-  node.setAttribute("aria-label", label); node.title = label;
-  node.addEventListener("click", onClick); return node;
+  const node = element("ha-button", className); node.appearance = "plain";
+  node.ariaLabel = label; node.title = label;
+  if (onClick) node.addEventListener("click", onClick); return node;
 }
 
 class RoomOverviewCard extends HTMLElement {
   constructor() {
-    super(); this.attachShadow({ mode: "open" }); this._pending = new Set(); this._rows = new Map(); this._lightValues = new Map();
-    this.shadowRoot.innerHTML = `<style>${CARD_STYLE}</style><ha-card><img class="background" alt=""><div class="shade"></div><div class="heading"><div class="room-summary"><button type="button" class="room-button"><ha-icon></ha-icon><span class="name"></span></button><div class="readings"></div></div><div class="status-row"><div class="sensor-status"></div><div class="warnings"></div></div></div><div class="tiles"></div><div class="message" role="status" hidden></div></ha-card><dialog aria-labelledby="room-overview-dialog-title"><div class="dialog-header"><h2 id="room-overview-dialog-title" class="dialog-heading"></h2><button type="button" class="close" aria-label="Close room details"><ha-icon icon="mdi:close"></ha-icon></button></div><div class="dialog-body"><div class="dialog-error" role="alert"></div><div class="dialog-list"></div></div></dialog>`;
-    this._dialog = this.shadowRoot.querySelector("dialog");
-    this.shadowRoot.querySelector(".room-button").addEventListener("click", () => this._openDetails());
-    this.shadowRoot.querySelector(".close").addEventListener("click", () => this._closeDialog());
-    this._dialog.addEventListener("click", event => { if (event.target === this._dialog) { const r = this._dialog.getBoundingClientRect(); if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) this._closeDialog(); } });
-    this._dialog.addEventListener("close", () => { this._dialogSelection = null; if (this._opener?.isConnected) this._opener.focus(); });
+    super(); this.attachShadow({ mode: "open" });
+    this.shadowRoot.innerHTML = `<style>${CARD_STYLE}</style><ha-card><img class="background" alt=""><div class="shade"></div><div class="heading"><div class="room-summary"><ha-button appearance="plain" class="room-button"><ha-icon></ha-icon><span class="name"></span></ha-button><div class="readings"></div></div><div class="status-row"><div class="sensor-status"></div><div class="warnings"></div></div></div><div class="tiles"></div><div class="message" role="status" hidden></div></ha-card><ha-dialog width="large"><div class="dialog-body"><div class="control-container"></div></div></ha-dialog>`;
+    this._dialog = this.shadowRoot.querySelector("ha-dialog");
+    this._bindRoomActions();
+    this._simpleTile = button("tile simple-tile", "Open room controls", undefined);
+    this._simpleTile.hidden = true; this._simpleTile.disabled = true;
+    this._simpleTitle = element("span", "simple-title"); this._simpleTitle.hidden = true;
+    this._simpleState = element("span", "simple-state"); this._simpleState.hidden = true;
+    this._simpleTile.append(iconNode(GROUPS.lights.icon), this._simpleTitle, this._simpleState, element("span", "unavailable-dot", "!"));
+    this.shadowRoot.querySelector("ha-card").append(this._simpleTile);
+    this._dialog.addEventListener("closed", event => {
+      if (event.target !== this._dialog) return;
+      this._dialog.open = false; this._unmountControls();
+      if (this._opener?.isConnected) this._opener.focus({ preventScroll: true });
+    });
+    this._dialog.addEventListener("keydown", event => {
+      if (event.key === "Escape" && this._control?._sensor) {
+        event.preventDefault(); event.stopPropagation(); this._control._closeSensor();
+      }
+    }, true);
     this.shadowRoot.querySelector("ha-card").dataset.hasImage = "false";
     this.shadowRoot.querySelector("img").addEventListener("error", () => {
       this.shadowRoot.querySelector("img").hidden = true;
@@ -41,16 +55,32 @@ class RoomOverviewCard extends HTMLElement {
     const areas = Object.values(hass?.areas ?? {});
     return { area: areas.find(a => a.icon)?.area_id ?? areas[0]?.area_id ?? "" };
   }
-  setConfig(config) { this._config = normalizeConfig(config); this._tileSignature = null; this._update(); }
+  setConfig(config) {
+    const next = normalizeConfig(config);
+    if (this._config && (this._config.area !== next.area || this._config.mode !== next.mode || this._config.group !== next.group)) this._closeDialog();
+    controlCardConfig(next);
+    this._config = next; this._tileSignature = null; this._update();
+  }
   set hass(hass) {
     this._hass = hass;
     if (this.isConnected && this._connection !== hass.connection) { this._unwatch?.(); this._unwatch = null; this._connection = hass.connection; }
     this._watch(); this._update();
   }
-  connectedCallback() { this._watch(); this._update(); }
-  disconnectedCallback() { this._unwatch?.(); this._unwatch = null; this._dialogSelection = null; this._mediaRequest = null; clearTimeout(this._mediaRefresh); if (this._dialog.open) this._dialog.close(); }
-  getCardSize() { return 4; }
-  getGridOptions() { return { columns: 12, rows: "auto", min_columns: 6, min_rows: 3 }; }
+  connectedCallback() {
+    this._watch(); this._update();
+    window.addEventListener("scroll", this._cancelOnScroll, true);
+    window.addEventListener("blur", this._cancelOnBlur);
+    document.addEventListener("visibilitychange", this._cancelOnVisibility);
+  }
+  disconnectedCallback() {
+    this._cancelPress(); this._closeDialog(); this._unmountControls();
+    window.removeEventListener("scroll", this._cancelOnScroll, true);
+    window.removeEventListener("blur", this._cancelOnBlur);
+    document.removeEventListener("visibilitychange", this._cancelOnVisibility);
+    this._unwatch?.(); this._unwatch = null; this._mediaRequest = null; clearTimeout(this._mediaRefresh);
+  }
+  getCardSize() { return this._config?.mode === "simple" ? 2 : 4; }
+  getGridOptions() { return this._config?.mode === "simple" ? { columns: 3, rows: "auto", min_columns: 2, min_rows: 1 } : { columns: 12, rows: "auto", min_columns: 6, min_rows: 2 }; }
   _watch() {
     if (!this.isConnected || !this._hass || this._unwatch) return;
     this._connection = this._hass.connection;
@@ -80,14 +110,42 @@ class RoomOverviewCard extends HTMLElement {
     return this._mediaImage || safeImageUrl(fallback);
   }
   _update() {
-    if (!this._config || !this._hass) return;
+    if (!this._config) return;
+    const simple = this._config.mode === "simple", card = this.shadowRoot.querySelector("ha-card");
+    card.dataset.mode = this._config.mode;
+    this._simpleTile.hidden = !simple;
+    const layoutHeight = typeof this._config.grid_options?.rows === "number" && this._config.grid_options.rows > 0;
+    this.dataset.layoutHeight = String(layoutHeight); card.dataset.layoutHeight = String(layoutHeight);
+    if (simple) {
+      this._mediaRequest = null; this._mediaImage = ""; this._mediaError = false; clearTimeout(this._mediaRefresh);
+      const img = this.shadowRoot.querySelector("img"); img.removeAttribute("src"); img.hidden = true;
+      this._image = ""; card.dataset.hasImage = "false"; card.dataset.lit = "false"; card.dataset.hasControls = "false";
+      this._simpleTile.querySelector("ha-icon").setAttribute("icon", GROUPS[this._config.group].icon);
+      this._simpleTitle.hidden = !this._config.show_room_title; this._simpleState.hidden = !this._config.show_state;
+      this._simpleTile.dataset.hasText = String(!!(this._config.show_room_title || this._config.show_state));
+    }
+    if (!this._hass) return;
     if (!this._registries) { this._message(this._registryError ? "Room information could not be loaded. Reload to try again." : "Loading room…"); return; }
     const model = discoverRoom(this._config, this._registries, this._hass.states);
     this._model = model;
     const name = this._config.name || model.area?.name || "Room not found";
+    if (simple) {
+      const kind = this._config.group, entities = model.groups[kind], status = groupStatus(kind, entities, this._hass.states);
+      this._simpleTile.dataset.kind = kind; this._simpleTile.dataset.active = String(status.active);
+      this._simpleTile.dataset.unavailable = String(entities.length > 0 && status.unavailable === entities.length);
+      this._simpleTile.disabled = !model.area;
+      const summary = this._config.show_state ? simpleGroupSummary(this._config, model, this._registries, this._hass.states, this._hass.locale?.language) : "";
+      this._simpleTitle.textContent = name; this._simpleState.textContent = summary;
+      this._simpleTile.title = `${name} · ${GROUPS[kind].name}: ${status.status}${summary ? ` · ${summary}` : ""}`;
+      this._simpleTile.ariaLabel = `${name} ${GROUPS[kind].name}, ${status.status}${summary ? `. ${summary}` : ""}. Open room controls`;
+      this._simpleTile.querySelector(".unavailable-dot").hidden = !status.unavailable;
+      this._message(!model.area ? "Room no longer exists" : this._registryError ? "Room assignments could not be refreshed." : "");
+      if (this._dialog.open) this._updateControls();
+      return;
+    }
     this.shadowRoot.querySelector(".name").textContent = name;
     this.shadowRoot.querySelector(".room-button ha-icon").setAttribute("icon", this._config.icon || model.area?.icon || "mdi:home-outline");
-    this.shadowRoot.querySelector(".room-button").setAttribute("aria-label", `Open ${name} room details`);
+    this.shadowRoot.querySelector(".room-button").ariaLabel = `Open ${name} room details`;
     this.shadowRoot.querySelector(".room-button").title = `${name} · Room details`;
     const image = this._backgroundImage(model.area?.picture || "");
     const img = this.shadowRoot.querySelector("img");
@@ -102,7 +160,7 @@ class RoomOverviewCard extends HTMLElement {
       this._readingSignature = readingSignature; readings.replaceChildren();
       for (const [kind, reading] of Object.entries(this._readings)) {
         if (!reading) continue;
-        const node = button("reading", kind, event => this._openEntities(event.currentTarget.getAttribute("aria-label"), this._readings[kind].entities, event.currentTarget));
+        const node = button("reading", kind, undefined);
         node.dataset.kind = kind; readings.append(node);
       }
     }
@@ -111,7 +169,7 @@ class RoomOverviewCard extends HTMLElement {
       const value = reading.value === null ? "—" : new Intl.NumberFormat(this._hass.locale?.language, { maximumFractionDigits: 1 }).format(reading.value);
       const label = `${kind === "temperature" ? "Temperature" : "Humidity"}: ${reading.value === null ? "unavailable" : `${value} ${reading.unit}`}`;
       const node = readings.querySelector(`[data-kind="${kind}"]`);
-      node.setAttribute("aria-label", label); node.title = label;
+      node.ariaLabel = label; node.title = label;
       node.textContent = `${value}${reading.unit === "%" ? "" : " "}${reading.unit}`;
     }
     const warnings = this.shadowRoot.querySelector(".warnings");
@@ -121,7 +179,7 @@ class RoomOverviewCard extends HTMLElement {
       this._warningSignature = warningSignature;
       const hadFocus = warnings.contains(this.shadowRoot.activeElement); warnings.replaceChildren();
       for (const warning of activeWarnings) {
-        const node = button("warning", warning.text, event => this._openEntities(warning.text, warning.entities, event.currentTarget));
+        const node = button("warning", warning.text, undefined);
         node.dataset.kind = warning.key; node.append(iconNode(warning.icon)); warnings.append(node);
       }
       if (hadFocus) this.shadowRoot.querySelector(".room-button").focus();
@@ -134,12 +192,12 @@ class RoomOverviewCard extends HTMLElement {
       tiles.dataset.alignment = this._config.tile_alignment ?? "right";
       this.shadowRoot.querySelector("ha-card").dataset.hasControls = String(model.tiles.length > 0);
       for (const tile of model.tiles) {
-        const node = button("tile", GROUPS[tile.kind].name, event => this._openGroup(tile.kind, event.currentTarget));
+        const node = button("tile", GROUPS[tile.kind].name, undefined);
         node.dataset.kind = tile.kind;
         node.append(iconNode(GROUPS[tile.kind].icon), element("span", "unavailable-dot", "!")); tiles.append(node);
       }
       for (const indicator of model.indicators) {
-        const node = button("sensor-indicator", GROUPS[indicator.kind].name, event => this._openGroup(indicator.kind, event.currentTarget));
+        const node = button("sensor-indicator", GROUPS[indicator.kind].name, undefined);
         node.dataset.kind = indicator.kind;
         node.append(iconNode(GROUPS[indicator.kind].icon), element("span", "unavailable-dot", "!")); indicators.append(node);
       }
@@ -149,150 +207,84 @@ class RoomOverviewCard extends HTMLElement {
       const status = groupStatus(tile.kind, tile.entities, this._hass.states);
       node.dataset.active = String(status.active); node.dataset.unavailable = String(status.unavailable === tile.entities.length);
       if (node.classList.contains("sensor-indicator")) {
-        node.hidden = tile.kind === "contacts" && !status.active && !status.unavailable;
-        if (node.hidden && this.shadowRoot.activeElement === node) this.shadowRoot.querySelector(".room-button").focus();
+        const hadFocus = this.shadowRoot.activeElement === node;
+        node.hidden = ["contacts", "occupancy"].includes(tile.kind) && !status.active && !status.unavailable;
+        if (node.hidden && hadFocus) this.shadowRoot.querySelector(".room-button").focus();
       }
       node.title = `${GROUPS[tile.kind].name}: ${status.status}`;
-      node.setAttribute("aria-label", `${name} ${GROUPS[tile.kind].name}, ${status.status}`);
+      node.ariaLabel = `${name} ${GROUPS[tile.kind].name}, ${status.status}`;
       node.querySelector(".unavailable-dot").hidden = !status.unavailable;
     }
     const sensorStatus = this.shadowRoot.querySelector(".sensor-status");
     sensorStatus.hidden = !sensorStatus.querySelector(".sensor-indicator:not([hidden])");
     this.shadowRoot.querySelector("ha-card").dataset.lit = String(groupStatus("lights", model.groups.lights, this._hass.states).active);
     this._message(!model.area ? "This room no longer exists. Select a room in the card editor." : this._registryError ? "Room assignments could not be refreshed." : this._mediaError ? "Background image could not be loaded. Select another image in the card editor." : !model.available.length && !this._readings.temperature && !this._readings.humidity ? "No supported devices assigned to this room" : "");
-    if (this._dialog.open) this._updateDialog();
+    if (this._dialog.open) this._updateControls();
   }
-  _openGroup(kind, opener) { this._showDialog({ kind, opener }); }
-  _openDetails() { this._showDialog({ kind: "all", opener: this.shadowRoot.querySelector(".room-button") }); }
-  _openEntities(title, entities, opener) {
-    if (entities.length === 1) this._moreInfo(entities[0]);
-    else this._showDialog({ kind: "sensors", title, entities, opener });
+  _bindRoomActions() {
+    this._cancelOnScroll = () => this._cancelPress();
+    this._cancelOnVisibility = () => { if (document.hidden) this._cancelPress(); };
+    this._cancelOnBlur = () => this._cancelPress();
+    const isOverview = event => event.composedPath().includes(this.shadowRoot.querySelector("ha-card"));
+    this.shadowRoot.addEventListener("click", event => {
+      if (!isOverview(event)) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      if (event.detail && Date.now() < (this._ignoreClickUntil ?? 0)) return;
+      this._openControls(event.composedPath().find(node => node.tagName === "BUTTON") ?? this.shadowRoot.querySelector(".room-button"));
+    }, true);
+    this.shadowRoot.addEventListener("pointerdown", event => {
+      if (!isOverview(event) || event.isPrimary === false || event.button !== 0) return;
+      this._cancelPress();
+      const press = { id: event.pointerId, x: event.clientX, y: event.clientY, opener: event.target.closest("button") };
+      press.timer = setTimeout(() => {
+        if (this._press !== press) return;
+        this._ignoreClickUntil = Date.now() + 1000; this._cancelPress(); this._openControls(press.opener);
+      }, 550);
+      this._press = press;
+    }, true);
+    this.shadowRoot.addEventListener("pointermove", event => {
+      if (this._press && (this._press.id !== event.pointerId || Math.hypot(event.clientX - this._press.x, event.clientY - this._press.y) > 10)) this._cancelPress();
+    }, true);
+    for (const type of ["pointerup", "pointercancel", "lostpointercapture", "pointerleave"]) this.shadowRoot.addEventListener(type, () => this._cancelPress(), true);
+    this.shadowRoot.addEventListener("contextmenu", event => {
+      if (!isOverview(event)) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      this._ignoreClickUntil = Date.now() + 1000; this._cancelPress(); this._openControls();
+    }, true);
+
   }
-  _showDialog(selection) {
-    if (!this._model?.area) return;
-    this._dialogSelection = selection; this._opener = selection.opener;
-    this._dialogSignature = null; this.shadowRoot.querySelector(".dialog-error").textContent = "";
-    this._updateDialog(); if (!this._dialog.open) this._dialog.showModal();
+  _cancelPress() { if (this._press) clearTimeout(this._press.timer); this._press = null; }
+  async _openControls(opener) {
+    if (!this.isConnected || !this._model?.area) return;
+    this._opener = opener ?? this.shadowRoot.querySelector(this._config.mode === "simple" ? ".simple-tile" : ".room-button");
+    this._cancelPress();
+    const request = this._openRequest = {};
+    try { await loadNativeComponents(); }
+    catch (error) { this._message(error.message); return; }
+    if (!this.isConnected || this._openRequest !== request) return;
+    this._updateControls(); this._dialog.open = true;
   }
-  _closeDialog() { if (this._dialog.open) this._dialog.close(); }
-  _dialogGroups() {
-    const selection = this._dialogSelection;
-    if (!selection) return [];
-    if (selection.kind === "sensors") return [{ name: selection.title, entities: selection.entities.filter(id => !this._model.excluded.has(id)) }];
-    if (selection.kind !== "all") return [{ name: GROUPS[selection.kind].name, entities: this._model.groups[selection.kind] }];
-    const groups = this._model.available.map(kind => ({ name: GROUPS[kind].name, entities: this._model.groups[kind] }));
-    const readings = [...new Set(Object.values(this._readings).flatMap(r => r?.entities ?? []))];
-    if (readings.length) groups.unshift({ name: "Temperature and humidity", entities: readings });
-    return groups;
+  _updateControls() {
+    this._dialog.headerTitle = this._config.name || this._model.area?.name || "Room";
+    const config = controlCardConfig(this._config), signature = JSON.stringify(config);
+    if (!this._control) {
+      this._control = document.createElement("room-control-card");
+      this._control.setConfig(config); this._control.hass = this._hass;
+      this.shadowRoot.querySelector(".control-container").append(this._control);
+    } else if (signature !== this._controlSignature) this._control.setConfig(config);
+    this._controlSignature = signature; this._control.hass = this._hass;
   }
-  _updateDialog() {
-    const selection = this._dialogSelection; if (!selection) return;
-    const name = this._config.name || this._model.area?.name || "Room";
-    this.shadowRoot.querySelector(".dialog-heading").textContent = selection.kind === "all" ? `${name} · Room details` : `${name} · ${selection.title || GROUPS[selection.kind]?.name}`;
-    const groups = this._dialogGroups();
-    const signature = JSON.stringify(groups.map(group => ({ ...group, controls: group.entities.map(id => domainOf(id) === "light" ? lightCapabilities(this._hass.states[id]) : null) })));
-    if (signature !== this._dialogSignature) {
-      this._dialogSignature = signature; const list = this.shadowRoot.querySelector(".dialog-list"); list.replaceChildren(); this._rows.clear();
-      if (!groups.some(g => g.entities.length)) list.append(element("p", "empty", "No devices in this group."));
-      for (const group of groups) {
-        if (selection.kind === "all") list.append(element("h3", "group-title", group.name));
-        for (const id of group.entities) {
-          const row = element("div", "entity-row"); row.dataset.entity = id;
-          const details = button("entity-details", `Details for ${id}`, () => this._moreInfo(id));
-          const icon = iconNode("mdi:help-circle-outline"), text = element("span", "entity-text"), label = element("span", "entity-name"), state = element("span", "entity-state");
-          text.append(label, state); details.append(icon, text); row.append(details);
-          const domain = domainOf(id);
-          let action;
-          const sliders = {};
-          const isLight = domain === "light" || (domain === "switch" && this._model.groups.lights.includes(id));
-          if (["light", "switch", "fan"].includes(domain)) {
-            action = button(isLight ? "entity-toggle" : "entity-action", `Toggle ${id}`, () => this._toggle(id));
-            if (isLight) { action.setAttribute("role", "switch"); action.append(element("span", "toggle-thumb")); }
-            row.append(action);
-          }
-          const capabilities = domain === "light" ? lightCapabilities(this._hass.states[id]) : {};
-          for (const [kind, title, min, max, change] of [
-            ["brightness", "Brightness", 1, 100, value => this._setBrightness(id, value)],
-            ["color", "Color", 0, 360, value => this._setColor(id, value)],
-            ["temperature", "White temperature", ...lightTemperatureBounds(this._hass.states[id]?.attributes), value => this._setTemperature(id, value)],
-          ]) {
-            if (!capabilities[kind]) continue;
-            const control = element("label", `light-control ${kind}-control`);
-            const caption = element("span", "control-label", title), value = element("span", "control-value");
-            const input = element("input", `light-slider ${kind}`); input.type = "range"; input.min = String(min); input.max = String(max); input.step = "1";
-            input.addEventListener("input", () => {
-              this._sliderValue(kind, input, value);
-              if (kind === "color") row.style.setProperty("--light-color", `hsl(${input.value} 100% 50%)`);
-            });
-            input.addEventListener("change", () => change(Number(input.value)));
-            control.append(caption, value, input); row.append(control); sliders[kind] = { input, value };
-          }
-          this._rows.set(id, { row, details, icon, label, state, action, sliders, isLight }); list.append(row);
-        }
-      }
-    }
-    for (const [id, nodes] of this._rows) {
-      const state = this._hass.states[id], registry = this._registries.entities.find(e => e.entity_id === id);
-      const name = state?.attributes?.friendly_name || registry?.name || registry?.original_name || id;
-      nodes.label.textContent = name;
-      const hidePowerState = nodes.isLight && ["on", "off"].includes(state?.state);
-      nodes.state.textContent = hidePowerState ? "" : state ? this._formatState(state) : "Unavailable";
-      nodes.state.hidden = hidePowerState;
-      nodes.details.setAttribute("aria-label", `Details for ${name}`); nodes.details.title = `Open ${name} details`;
-      const fallback = GROUPS[Object.keys(this._model.groups).find(k => this._model.groups[k].includes(id))]?.icon || (state?.attributes?.device_class === "temperature" ? "mdi:thermometer" : "mdi:water-percent");
-      nodes.icon.setAttribute("icon", state?.attributes?.icon || fallback);
-      nodes.icon.dataset.on = String(nodes.isLight && state?.state === "on");
-      if (nodes.action) {
-        const on = state?.state === "on";
-        if (nodes.isLight) nodes.action.setAttribute("aria-checked", String(on));
-        else nodes.action.textContent = this._pending.has(id) ? "…" : on ? "On" : "Off";
-        nodes.action.dataset.on = String(on); nodes.action.disabled = !usable(state) || this._pending.has(id);
-        nodes.action.setAttribute("aria-busy", String(this._pending.has(id)));
-        nodes.action.setAttribute("aria-label", `${on ? "Turn off" : "Turn on"} ${name}`);
-        nodes.action.title = `${on ? "Turn off" : "Turn on"} ${name}`;
-      }
-      if (Object.keys(nodes.sliders).length) {
-        const attributes = state?.attributes ?? {}, previous = this._lightValues.get(id);
-        const color = lightColor(attributes, previous);
-        const brightness = Number.isFinite(attributes.brightness) && attributes.brightness > 0 ? Math.max(1, Math.round(attributes.brightness / 255 * 100)) : previous?.brightness ?? 100;
-        const bounds = lightTemperatureBounds(attributes);
-        const temperature = attributes.color_temp_kelvin ?? (attributes.color_temp > 0 ? Math.round(1000000 / attributes.color_temp) : previous?.temperature ?? bounds[0]);
-        this._lightValues.set(id, { ...color, brightness, temperature });
-        const editingColor = this.shadowRoot.activeElement === nodes.sliders.color?.input;
-        if (!editingColor) nodes.row.style.setProperty("--light-color", !nodes.sliders.color || attributes.color_mode === "color_temp" || !color.saturation ? "#fff" : `hsl(${color.hue} ${color.saturation}% 50%)`);
-        for (const [kind, { input, value }] of Object.entries(nodes.sliders)) {
-          if (kind === "temperature") { input.min = String(bounds[0]); input.max = String(bounds[1]); }
-          if (this.shadowRoot.activeElement !== input) input.value = String(kind === "brightness" ? brightness : kind === "color" ? Math.round(color.hue) : temperature);
-          input.disabled = !usable(state) || this._pending.has(id);
-          input.setAttribute("aria-label", `${name} ${kind === "temperature" ? "white temperature" : kind}`);
-          this._sliderValue(kind, input, value);
-        }
-      }
-    }
+  _unmountControls() {
+    this._control?.remove(); this._control = null; this._controlSignature = null;
+    if (this._dialog.bodyContainer) this._dialog.bodyContainer.scrollTop = 0;
   }
-  _sliderValue(kind, input, output) {
-    const text = `${input.value}${kind === "brightness" ? "%" : kind === "color" ? "°" : " K"}`;
-    output.textContent = kind === "color" ? "" : text; input.setAttribute("aria-valuetext", text);
-    if (kind === "color") input.style.setProperty("--swatch-color", `hsl(${input.value} 100% 50%)`);
+  _closeDialog() {
+    this._openRequest = null; this._dialog.open = false;
+    this._unmountControls();
   }
-  _formatState(state) {
-    try { if (this._hass.formatEntityState) return this._hass.formatEntityState(state); } catch { /* Minimal HA clients still render the raw state. */ }
-    return `${state.state.replace(/_/g, " ")}${state.attributes?.unit_of_measurement ? ` ${state.attributes.unit_of_measurement}` : ""}`;
-  }
-  async _service(id, domain, service, data = {}) {
-    if (this._pending.has(id) || !usable(this._hass.states[id])) return;
-    this._pending.add(id); this._updateDialog(); this.shadowRoot.querySelector(".dialog-error").textContent = "";
-    try { await this._hass.callService(domain, service, data, { entity_id: id }); }
-    catch (error) { this.shadowRoot.querySelector(".dialog-error").textContent = error?.message || "The device could not be controlled. Please try again."; }
-    finally { this._pending.delete(id); this._updateDialog(); }
-  }
-  _toggle(id) { const domain = domainOf(id); if (["light", "switch", "fan"].includes(domain)) return this._service(id, domain, this._hass.states[id]?.state === "on" ? "turn_off" : "turn_on"); }
-  _setBrightness(id, percent) { return this._service(id, "light", "turn_on", { brightness_pct: Math.max(1, Math.min(100, percent)) }); }
-  _setColor(id, hue) { return this._service(id, "light", "turn_on", { hs_color: [hue, 100] }); }
-  _setTemperature(id, kelvin) { return this._service(id, "light", "turn_on", { color_temp_kelvin: kelvin }); }
-  _moreInfo(entityId) { this._closeDialog(); this.dispatchEvent(new CustomEvent("hass-more-info", { bubbles: true, composed: true, detail: { entityId } })); }
+
 }
 
 if (!customElements.get("room-overview-card")) customElements.define("room-overview-card", RoomOverviewCard);
 window.customCards = window.customCards || [];
-if (!window.customCards.some(card => card.type === "room-overview-card")) window.customCards.push({ type: "room-overview-card", name: "Room Overview Card", description: "Choose a room and up to four groups of devices.", preview: true });
+if (!window.customCards.some(card => card.type === "room-overview-card")) window.customCards.push({ type: "room-overview-card", name: "Room Overview Card", description: "Room overview with integrated room controls and independent exclusions.", preview: true });

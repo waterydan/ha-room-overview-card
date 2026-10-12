@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540">
+<defs><linearGradient id="wall" x2="0" y2="1"><stop stop-color="#d6ddd6"/><stop offset="1" stop-color="#e6e7d7"/></linearGradient><linearGradient id="floor" x2="0" y2="1"><stop stop-color="#a38b70"/><stop offset="1" stop-color="#756856"/></linearGradient></defs>
+<rect width="960" height="540" fill="url(#wall)"/><path d="M0 325H960V540H0Z" fill="url(#floor)"/><path d="M0 380h960M0 450h960M350 325 210 540M650 325 750 540" stroke="#98816b" stroke-width="3"/>
+<path d="M0 0 180 44v281L0 396Z" fill="#c1cbbf"/><path d="M960 0 850 35v290l110 60" fill="#bfcabc"/>
+<rect x="254" y="47" width="253" height="211" fill="#7a9293"/><rect x="266" y="59" width="229" height="187" fill="#c6dcda"/><path d="M380 59v187M266 151h229" stroke="#eeeee1" stroke-width="9"/>
+<rect x="574" y="62" width="137" height="105" fill="#758476"/><rect x="584" y="72" width="117" height="85" fill="#e8dfcc"/><path d="M591 146 620 82 646 127l44-30v49" fill="#9fa78d"/>
+<rect x="294" y="261" width="382" height="139" rx="25" fill="#738986"/><rect x="278" y="327" width="412" height="89" rx="22" fill="#667d79"/><rect x="315" y="279" width="151" height="65" rx="10" fill="#92a39b"/><rect x="486" y="279" width="152" height="65" rx="10" fill="#8f9e96"/><path d="M312 410v27m341-27v27" stroke="#34433b" stroke-width="12"/>
+<ellipse cx="489" cy="475" rx="232" ry="49" fill="#cabba0"/><path d="M340 438h298l-21 29H358z" fill="#bd9973"/><path d="M358 466v46m259-46v46" stroke="#584f40" stroke-width="10"/><rect x="448" y="414" width="71" height="24" fill="#e5e2d4"/>
+<path d="M771 321V155m-42 0h83l-15-49h-53z" fill="#eae6d2" stroke="#6d735f" stroke-width="5"/><ellipse cx="771" cy="333" rx="28" ry="9" fill="#707560"/>
+<rect x="77" y="355" width="125" height="71" rx="9" fill="#899b86"/><path d="M88 424v24m102-24v24" stroke="#4c5d4a" stroke-width="9"/>
+<rect width="960" height="540" fill="#4e7056" opacity=".08"/>
+<rect x="22" y="20" width="260" height="32" rx="4" fill="#162822" opacity=".68"/><text x="36" y="41" fill="#e9f0eb" font-family="monospace" font-size="17">DEMO · LIVING ROOM WIDE</text>
+</svg>
